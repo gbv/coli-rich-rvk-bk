@@ -4,7 +4,6 @@ use v5.20;
 use HTTP::Tiny;
 use JSON::PP 'decode_json';
 use URI;    # non-core dependency but likely installed
-use Data::Dumper;
 
 my $rvkScheme = "http://bartoc.org/en/node/533";
 my $bkScheme  = "http://bartoc.org/en/node/18785";
