@@ -4,6 +4,7 @@ use v5.20;
 use HTTP::Tiny;
 use JSON::PP 'decode_json';
 use URI;    # non-core dependency but likely installed
+use Time::HiRes;
 
 my $rvkScheme = "http://bartoc.org/en/node/533";
 my $bkScheme  = "http://bartoc.org/en/node/18785";
@@ -23,10 +24,44 @@ sub fetch {
     }
     else {
         error("Failed HTTP request: $url");
+        return;
     }
 }
 
+sub enrichment {
+    my @rvkuris = map { s/ /%20/g; "http://rvk.uni-regensburg.de/nt/$_" } @_;
+
+    # TODO: cache results to not query same RVK again and again
+    my $infer = fetch(
+        "https://coli-conc.gbv.de/api/mappings/infer",
+        fromScheme => $rvkScheme,
+        from       => join( "|", @rvkuris ),
+        type       => $narrowOrExact,
+        toScheme   => $bkScheme,
+        partOf     => 'any',
+        strict     => 1
+    );
+
+    my %enrich;
+    for (@$infer) {
+        my $notation = $_->{to}{memberSet}[0]{notation}[0];
+        my $mapping  = $_->{uri} ? $_ : $_->{source}[0];
+        my $uri      = $mapping->{uri};
+
+        if ( $enrich{$notation} ) {
+            push @{ $enrich{$notation} }, $uri;
+        }
+        else {
+            $enrich{$notation} = [$uri];
+        }
+    }
+
+    return %enrich;
+}
+
 while ( my $ppn = <> ) {
+    Time::HiRes::sleep(0.05);    # avoid too many requests
+
     chomp $ppn;
     unless ( $ppn =~ /^[0-9]+[0-9X]$/ ) {
         error("Invalid PPN at line $.");
@@ -58,43 +93,16 @@ while ( my $ppn = <> ) {
         next;
     }
 
-    # TODO: escaping is right?
-    my @rvkuris = map { s/ /%20/g; "http://rvk.uni-regensburg.de/nt/$_" } @rvk;
-
-    # TODO: cache results to not query same RVK again and again
-    my $infer = fetch(
-        "https://coli-conc.gbv.de/api/mappings/infer",
-        fromScheme => $rvkScheme,
-        from       => join( "|", @rvkuris ),
-        type       => $narrowOrExact,
-        toScheme   => $bkScheme,
-        partOf     => 'any',
-        strict     => 1
-    );
-
-    unless (@$infer) {
+    if ( my %enrich = enrichment(@rvk) ) {
+        say "  003@\$0$ppn";
+        for my $bk ( keys %enrich ) {
+            say "+ 045Q/01 \$a$bk\$Acoli-conc"
+              . join( "", map { '$A' . $_ } @{ $enrich{$bk} } );
+        }
+        say;
+    }
+    else {
         error("No enrichment found for PPN $ppn");
         next;
     }
-
-    my %enrich;
-    for (@$infer) {
-        my $notation = $_->{to}{memberSet}[0]{notation}[0];
-        my $mapping  = $_->{uri} ? $_ : $_->{source}[0];
-        my $uri      = $mapping->{uri};
-
-        if ( $enrich{$notation} ) {
-            push @{ $enrich{$notation} }, $uri;
-        }
-        else {
-            $enrich{$notation} = [$uri];
-        }
-    }
-
-    say "  003@\$0$ppn";
-    for my $bk ( keys %enrich ) {
-        say "+ 045Q/01 \$a$bk\$Acoli-conc"
-          . join( "", map { '$A' . $_ } @{ $enrich{$bk} } );
-    }
-    say;
 }

@@ -4,10 +4,10 @@ Anreicherung von K10plus-Datensätzen durch BK-Notationen auf Grundlage von vorh
 
 ## Requirements
 
-Perl and additional Perl module `URI`:
+Perl and additional modules `URI` and `IO::Socket::SSL`:
 
 ~~~sh
-sudo apt-get install liburi-perl
+sudo apt-get install liburi-perl libio-socket-ssl-perl
 ~~~
 
 ## Get PPNs to enrich
